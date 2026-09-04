@@ -45,6 +45,7 @@ Para revisar el código fuente o ejecutar la aplicación localmente:
 1. Clona el repositorio:
    ```bash
    git clone https://github.com/cunasegura105-gif/Centro-de-Acopio.git
+   ```
 
 2. Entra al directorio del proyecto y ejecuta el archivo StockRed/html/index.html en tu navegador web.
 
