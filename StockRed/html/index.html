@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="hosting-provider" content="Netlify">
+<meta name="netlify-deploy" content="https://netlify.new/?utm_campaign=ai-legible&amp;utm_source=meta&amp;utm_medium=referral&amp;utm_id=e1790e3d-da3f-4cc6-9cfd-e935f4e6a7f4">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockRed</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .tab-active { color: #1e3a8a; border-bottom: 3px solid #1e3a8a; }
+  .tab-inactive { color: #6b7280; border-bottom: 3px solid transparent; }
+  .fade-in { animation: fadeIn .25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen flex flex-col">
+
+<header class="bg-white border-b sticky top-0 z-40">
+  <div class="max-w-7xl mx-auto px-4">
+    <div class="h-16 flex items-center justify-between">
+      <div class="flex items-center gap-2 cursor-pointer" onclick="navegarA('inicio')">
+        <span class="font-extrabold text-lg text-blue-900 tracking-tight">StockRed</span>
+      </div>
+      <div id="contenedor-auth" class="flex items-center gap-3"></div>
+    </div>
+    <nav class="flex items-center gap-8 text-sm font-semibold -mb-px" id="nav-tabs">
+      <button data-tab="inicio" onclick="navegarA('inicio')" class="py-3">Inicio</button>
+      <button data-tab="mapa" onclick="navegarA('mapa')" class="py-3">Centros y Mapa</button>
+      <button data-tab="registro" onclick="requiereSesion('registro')" class="py-3">Operaciones</button>
+      <button data-tab="coordinacion" onclick="requiereSesion('coordinacion','coordinador')" class="py-3 hidden" id="tab-coordinacion">Dashboard Global</button>
+    </nav>
+  </div>
+</header>
+
+<div id="toast" class="hidden fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-xl z-50 text-sm fade-in"></div>
+
+<main class="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
+
+  <section id="sec-inicio" class="space-y-10">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+      <div class="space-y-4">
+        <span id="badge-estado" class="inline-block bg-blue-50 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">Modo consulta · invitado</span>
+        <h1 class="text-4xl font-black text-gray-900 leading-tight">Coordinación en tiempo real de centros de acopio</h1>
+        <p class="text-gray-600 text-base leading-relaxed max-w-md">Plataforma centralizada para la trazabilidad de inventarios por campaña, donaciones anónimas, transferencias y mermas ajustadas.</p>
+        <button onclick="abrirModalLogin()" class="bg-blue-900 hover:bg-blue-800 text-white font-bold px-6 py-3 rounded-lg shadow transition">Iniciar sesión con credenciales</button>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-white p-5 rounded-xl border">
+          <p class="text-xs font-bold text-gray-400 uppercase">Donaciones totales</p>
+          <p id="kpi-donaciones" class="text-3xl font-extrabold text-blue-900 mt-1">0</p>
+        </div>
+        <div class="bg-white p-5 rounded-xl border">
+          <p class="text-xs font-bold text-gray-400 uppercase">Entregadas</p>
+          <p id="kpi-entregas" class="text-3xl font-extrabold text-emerald-600 mt-1">0</p>
+        </div>
+        <div class="bg-white p-5 rounded-xl border">
+          <p class="text-xs font-bold text-gray-400 uppercase">Centros activos</p>
+          <p id="kpi-centros" class="text-3xl font-extrabold text-purple-600 mt-1">0</p>
+        </div>
+        <div class="bg-white p-5 rounded-xl border">
+          <p class="text-xs font-bold text-gray-400 uppercase">Campaña activa principal</p>
+          <p id="kpi-campana" class="text-lg font-extrabold text-amber-500 mt-1">—</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-mapa" class="hidden space-y-4">
+    <div>
+      <h2 class="text-xl font-bold text-gray-900">Centros de Acopio Activos</h2>
+      <p class="text-sm text-gray-500">Ubicación y estado operativo en tiempo real.</p>
+    </div>
+    <div id="mapa" class="h-80 w-full rounded-xl border z-10"></div>
+    <div id="lista-centros" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+  </section>
+
+  <section id="sec-registro" class="hidden space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <div class="lg:col-span-1 bg-white p-5 rounded-xl border space-y-4 h-fit">
+        <h3 class="font-bold text-gray-900">Escanear / Registrar Movimiento</h3>
+        <p class="text-xs text-gray-500">Ingresa el código con la pistola lectora o escribe el código directamente.</p>
+        <p class="text-xs text-gray-400">Códigos demo: <span class="font-mono">7501234567890</span> (Agua), <span class="font-mono">7501234567891</span> (Cobija).</p>
+        
+        <input id="scan-input" type="text" placeholder="Esperando código..." autocomplete="off"
+          class="w-full border-2 border-blue-200 p-3 rounded-lg text-sm font-mono" onkeydown="if(event.key==='Enter'){event.preventDefault();procesarCodigo();}">
+        <div id="resultado-escaneo" class="text-sm"></div>
+
+        <form id="form-movimiento" onsubmit="guardarMovimiento(event)" class="space-y-3 pt-3 border-t">
+          <div>
+            <label class="block text-xs font-bold text-gray-600 mb-1">Campaña Activa</label>
+            <select id="select-campana" class="w-full border p-2 rounded-lg text-sm bg-gray-50"></select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-600 mb-1">Tipo de Operación</label>
+            <select id="tipo-movimiento" onchange="evaluarCamposFormulario()" class="w-full border p-2 rounded-lg text-sm bg-gray-50">
+              <option value="recepcion">Recepción (Donación)</option>
+              <option value="entrega">Entrega a institución/beneficiario</option>
+              <option value="merma" class="solo-encargado">Merma (Pérdida/Caducidad)</option>
+              <option value="transferencia" class="solo-encargado">Transferencia a otro centro</option>
+              <option value="ajuste" class="solo-encargado">Ajuste manual de inventario</option>
+            </select>
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs font-bold text-gray-600">Artículo</label>
+              <button type="button" id="btn-editar-articulo" onclick="habilitarEdicionArticulo()" class="hidden text-xs text-blue-700 font-bold hover:underline">✏️ Modificar / Cambiar</button>
+            </div>
+            <input id="input-articulo" type="text" readonly placeholder="Escanea un código primero" class="w-full border p-2 rounded-lg text-sm bg-gray-100" required>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-600 mb-1">Categoría / Área</label>
+            <input id="input-area" type="text" readonly class="w-full border p-2 rounded-lg text-sm bg-gray-100">
+            <select id="select-area-edicion" class="hidden w-full border p-2 rounded-lg text-sm bg-white"></select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-600 mb-1">Cantidad a procesar / donar</label>
+            <input id="input-cantidad" type="number" min="1" value="1" class="w-full border p-2 rounded-lg text-sm font-bold text-blue-900" required>
+          </div>
+
+          <div id="div-destino" class="hidden">
+            <label class="block text-xs font-bold text-gray-600 mb-1">Centro Destino</label>
+            <select id="input-destino" class="w-full border p-2 rounded-lg text-sm"></select>
+          </div>
+
+          <div id="div-signo" class="hidden">
+            <label class="block text-xs font-bold text-gray-600 mb-1">Dirección del Ajuste</label>
+            <select id="input-signo" class="w-full border p-2 rounded-lg text-sm">
+              <option value="1">Incrementar stock (+)</option>
+              <option value="-1">Reducir stock (-)</option>
+            </select>
+          </div>
+
+          <div id="div-motivo" class="hidden">
+            <label class="block text-xs font-bold text-gray-600 mb-1 text-red-600">Motivo (Obligatorio)</label>
+            <input id="input-motivo" type="text" placeholder="Ej. Empaque roto / Ajuste por conteo físico" class="w-full border p-2 rounded-lg text-sm border-red-300">
+          </div>
+
+          <button type="submit" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2.5 rounded-lg shadow transition">Registrar Movimiento</button>
+        </form>
+      </div>
+
+      <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white p-5 rounded-xl border">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="font-bold text-gray-900">Inventario Disponible · <span id="titulo-centro-activo"></span></h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                <tr>
+                  <th class="p-2">Código</th>
+                  <th class="p-2">Artículo</th>
+                  <th class="p-2">Área</th>
+                  <th class="p-2">Campaña</th>
+                  <th class="p-2">Stock Actual</th>
+                </tr>
+              </thead>
+              <tbody id="tabla-stock-centro"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border">
+          <h3 class="font-bold text-gray-900 mb-3">Catálogo Base de Productos</h3>
+          <div class="overflow-x-auto max-h-56 overflow-y-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-gray-50 border-b text-xs text-gray-500 uppercase sticky top-0">
+                <tr><th class="p-2">Código</th><th class="p-2">Artículo</th><th class="p-2">Área Asignada</th></tr>
+              </thead>
+              <tbody id="tabla-catalogo"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sec-coordinacion" class="hidden space-y-6">
+    <div class="flex justify-between items-center">
+      <div>
+        <h2 class="text-xl font-bold text-gray-900">Dashboard de Coordinación General</h2>
+        <p class="text-sm text-gray-500">Gestión de campañas, centros, inventario inter-centros y auditoría.</p>
+      </div>
+      <button onclick="exportarCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow transition">📄 Exportar Reporte CSV</button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white p-5 rounded-xl border space-y-3">
+        <h3 class="font-bold text-gray-900 flex items-center gap-2">Crear Nueva Campaña</h3>
+        <form onsubmit="crearCampana(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-gray-600 mb-1">ID Único (sin espacios)</label>
+            <input id="nueva-campana-id" type="text" placeholder="ej. sismo-2026" class="w-full border p-2 rounded-lg text-sm" required>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-600 mb-1">Nombre de la Campaña</label>
+            <input id="nueva-campana-nombre" type="text" placeholder="ej. Sismo Septiembre 2026" class="w-full border p-2 rounded-lg text-sm" required>
+          </div>
+          <button type="submit" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2 rounded-lg text-sm transition">Guardar Campaña</button>
+        </form>
+      </div>
+
+      <div class="bg-white p-5 rounded-xl border space-y-3">
+        <h3 class="font-bold text-gray-900 flex items-center gap-2">Registrar Nuevo Centro de Acopio</h3>
+        <form onsubmit="crearCentro(event)" class="space-y-3">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-bold text-gray-600 mb-1">ID Centro</label>
+              <input id="nuevo-centro-id" type="text" placeholder="ej. norte" class="w-full border p-2 rounded-lg text-sm" required>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-600 mb-1">Nombre del Centro</label>
+              <input id="nuevo-centro-nombre" type="text" placeholder="ej. Centro Norte" class="w-full border p-2 rounded-lg text-sm" required>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-bold text-gray-600 mb-1">Latitud</label>
+              <input id="nuevo-centro-lat" type="number" step="any" placeholder="ej. 22.400" class="w-full border p-2 rounded-lg text-sm" required>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-600 mb-1">Longitud</label>
+              <input id="nuevo-centro-lng" type="number" step="any" placeholder="ej. -97.890" class="w-full border p-2 rounded-lg text-sm" required>
+            </div>
+          </div>
+          <button type="submit" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2 rounded-lg text-sm transition">Registrar Centro</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-xl border">
+      <h3 class="font-bold text-gray-900 mb-3">Existencias Consolidadas por Centro y Campaña</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+            <tr>
+              <th class="p-2">Centro</th>
+              <th class="p-2">Código</th>
+              <th class="p-2">Artículo</th>
+              <th class="p-2">Área</th>
+              <th class="p-2">Campaña Asignada</th>
+              <th class="p-2">Stock</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-global-stock"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-white p-5 rounded-xl border">
+      <h3 class="font-bold text-gray-900 mb-3">Historial Trazable de Movimientos y Transferencias</h3>
+      <div class="overflow-x-auto max-h-72 overflow-y-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-gray-50 border-b text-xs text-gray-500 uppercase sticky top-0">
+            <tr>
+              <th class="p-2">Fecha</th>
+              <th class="p-2">Centro</th>
+              <th class="p-2">Campaña</th>
+              <th class="p-2">Tipo / Estatus</th>
+              <th class="p-2">Artículo</th>
+              <th class="p-2">Cant.</th>
+              <th class="p-2">Detalle / Destino</th>
+              <th class="p-2">Usuario</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-movimientos"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div id="modal-login" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5">
+    <div class="flex justify-between items-center border-b pb-3">
+      <h3 class="text-xl font-extrabold text-gray-900">Autenticación de Personal</h3>
+      <button onclick="cerrarModalLogin()" class="text-gray-400 hover:text-gray-600 font-bold">✕</button>
+    </div>
+    
+    <form onsubmit="ejecutarLogin(event)" class="space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Correo Electrónico</label>
+        <input id="login-email" type="email" placeholder="ej. coordinador@test.com" class="w-full border p-2.5 rounded-lg text-sm" required>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Contraseña</label>
+        <input id="login-pass" type="password" placeholder="••••••••" class="w-full border p-2.5 rounded-lg text-sm" required>
+      </div>
+      <div id="login-error" class="hidden text-xs text-red-600 font-semibold">Credenciales incorrectas. Verifique los accesos de prueba.</div>
+      <button type="submit" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2.5 rounded-lg shadow transition text-sm">Iniciar Sesión</button>
+    </form>
+
+    <div class="pt-3 border-t text-xs text-gray-500 space-y-1">
+      <p class="font-bold text-gray-700">Cuentas de prueba:</p>
+      <p><span class="font-mono">coordinador@test.com</span> / <span class="font-mono">coordinador_10</span></p>
+      <p><span class="font-mono">encargado@test.com</span> / <span class="font-mono">encargado_11</span></p>
+      <p><span class="font-mono">voluntario@test.com</span> / <span class="font-mono">voluntario_12</span></p>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const USUARIOS_BD = [
+  { email: 'coordinador@test.com', pass: 'coordinador_10', rol: 'coordinador', nombre: 'Coordinador General', centroId: null },
+  { email: 'encargado@test.com', pass: 'encargado_11', rol: 'encargado', nombre: 'Encargado Campus', centroId: 'campus' },
+  { email: 'voluntario@test.com', pass: 'voluntario_12', rol: 'voluntario', nombre: 'Voluntario Polideportivo', centroId: 'polideportivo' }
+];
+
+let CENTROS = [];
+let CAMPANAS = [];
+const AREAS = ['Alimentos y Bebidas','Agua','Ropa y Cobijas','Higiene Personal','Medicinas','Herramientas y Equipo','Otros'];
+
+let usuarioActual = null;
+let catalogo = {};
+let movimientos = [];
+let codigoEscaneado = null;
+let mapaLeaflet = null;
+
+function mostrarToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(()=>t.classList.add('hidden'), 2500);
+}
+
+function cargarDatos(){
+  try {
+    const cLocal = localStorage.getItem('centros-acopio');
+    CENTROS = cLocal ? JSON.parse(cLocal) : [];
+  } catch(e) { CENTROS = []; }
+  if(!CENTROS.length){
+    CENTROS = [
+      { id:'campus', nombre:'Centro Campus Principal', lat:22.392, lng:-97.898 },
+      { id:'polideportivo', nombre:'Centro Polideportivo', lat:22.410, lng:-97.880 }
+    ];
+    guardarCentros();
+  }
+
+  try {
+    const campLocal = localStorage.getItem('campanas-acopio');
+    CAMPANAS = campLocal ? JSON.parse(campLocal) : [];
+  } catch(e) { CAMPANAS = []; }
+  if(!CAMPANAS.length){
+    CAMPANAS = [{ id: 'c1', nombre: 'Huracán 2026' }, { id: 'c2', nombre: 'Sismo Septiembre 2026' }];
+    guardarCampanas();
+  }
+
+  try {
+    const catLocal = localStorage.getItem('catalogo-productos');
+    catalogo = catLocal ? JSON.parse(catLocal) : {};
+  } catch(e) { catalogo = {}; }
+
+  if(Object.keys(catalogo).length === 0){
+    catalogo = {
+      '7501234567890': { nombre:'Agua embotellada 1L', area:'Agua' },
+      '7501234567891': { nombre:'Cobija Térmica', area:'Ropa y Cobijas' },
+      '7501234567892': { nombre:'Arroz 1kg', area:'Alimentos y Bebidas' },
+      '7501234567893': { nombre:'Jabón neutro', area:'Higiene Personal' },
+      '7501234567894': { nombre:'Paracetamol 500mg', area:'Medicinas' }
+    };
+    guardarCatalogo();
+  }
+
+  try {
+    const movLocal = localStorage.getItem('movimientos');
+    movimientos = movLocal ? JSON.parse(movLocal) : [];
+  } catch(e) { movimientos = []; }
+
+  renderTodo();
+}
+
+function guardarCatalogo(){ try { localStorage.setItem('catalogo-productos', JSON.stringify(catalogo)); } catch(e){} }
+function guardarMovimientos(){ try { localStorage.setItem('movimientos', JSON.stringify(movimientos)); } catch(e){} }
+function guardarCentros(){ try { localStorage.setItem('centros-acopio', JSON.stringify(CENTROS)); } catch(e){} }
+function guardarCampanas(){ try { localStorage.setItem('campanas-acopio', JSON.stringify(CAMPANAS)); } catch(e){} }
+
+function crearCampana(ev){
+  ev.preventDefault();
+  if(!usuarioActual || usuarioActual.rol !== 'coordinador') return;
+  const id = document.getElementById('nueva-campana-id').value.trim().toLowerCase().replace(/\s+/g, '-');
+  const nombre = document.getElementById('nueva-campana-nombre').value.trim();
+
+  if(CAMPANAS.some(c => c.id === id)){ mostrarToast('Ya existe una campaña con este ID.'); return; }
+  CAMPANAS.push({ id, nombre });
+  guardarCampanas();
+  renderCampanasSelect();
+  renderTodo();
+  mostrarToast('¡Campaña registrada correctamente!');
+  ev.target.reset();
+}
+
+function crearCentro(ev){
+  ev.preventDefault();
+  if(!usuarioActual || usuarioActual.rol !== 'coordinador') return;
+  const id = document.getElementById('nuevo-centro-id').value.trim().toLowerCase().replace(/\s+/g, '-');
+  const nombre = document.getElementById('nuevo-centro-nombre').value.trim();
+  const lat = parseFloat(document.getElementById('nuevo-centro-lat').value);
+  const lng = parseFloat(document.getElementById('nuevo-centro-lng').value);
+
+  if(CENTROS.some(c => c.id === id)){ mostrarToast('Ya existe un centro con este ID.'); return; }
+  CENTROS.push({ id, nombre, lat, lng });
+  guardarCentros();
+  if(mapaLeaflet){ L.marker([lat, lng]).addTo(mapaLeaflet).bindPopup(`<b>${nombre}</b><br>Estado: Operativo`); }
+  renderCentros();
+  actualizarKpis();
+  evaluarCamposFormulario();
+  mostrarToast('¡Centro de Acopio registrado correctamente!');
+  ev.target.reset();
+}
+
+function renderCampanasSelect(){
+  const sel = document.getElementById('select-campana');
+  if(!sel) return;
+  sel.innerHTML = CAMPANAS.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+}
+
+function cambiarCampanaMovimiento(movId, nuevaCampanaId) {
+  const mov = movimientos.find(m => m.id === movId);
+  if(mov) {
+    mov.campana = nuevaCampanaId;
+    guardarMovimientos();
+    renderTodo();
+    mostrarToast('Campaña actualizada con éxito');
+  }
+}
+
+function abrirModalLogin(){
+  document.getElementById('modal-login').classList.remove('hidden');
+  document.getElementById('login-error').classList.add('hidden');
+}
+function cerrarModalLogin(){ document.getElementById('modal-login').classList.add('hidden'); }
+
+function ejecutarLogin(ev){
+  ev.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value.trim();
+  const user = USUARIOS_BD.find(u => u.email === email && u.pass === pass);
+  if(user){
+    usuarioActual = { ...user };
+    cerrarModalLogin();
+    actualizarInterfazAuth();
+    navegarA(usuarioActual.rol === 'coordinador' ? 'coordinacion' : 'registro');
+  } else {
+    document.getElementById('login-error').classList.remove('hidden');
+  }
+}
+
+function cerrarSesion(){
+  usuarioActual = null;
+  actualizarInterfazAuth();
+  navegarA('inicio');
+}
+
+function actualizarInterfazAuth(){
+  const cont = document.getElementById('contenedor-auth');
+  const badge = document.getElementById('badge-estado');
+  const tabCoord = document.getElementById('tab-coordinacion');
+  tabCoord.classList.toggle('hidden', !(usuarioActual && usuarioActual.rol === 'coordinador'));
+
+  if(usuarioActual){
+    const centro = CENTROS.find(c => c.id === usuarioActual.centroId);
+    cont.innerHTML = `
+      <div class="text-right leading-tight">
+        <p class="text-xs font-bold text-gray-800">${usuarioActual.nombre}</p>
+        <p class="text-xs text-gray-500">${centro ? centro.nombre : 'Coordinación'}</p>
+      </div>
+      <button onclick="cerrarSesion()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-bold transition">Salir</button>`;
+    if(badge) badge.textContent = 'Sesión activa · ' + usuarioActual.nombre;
+  } else {
+    cont.innerHTML = `
+      <button onclick="entrarComoInvitado()" class="text-xs text-gray-600 hover:text-gray-900 font-semibold px-3 py-2">Modo invitado</button>
+      <button onclick="abrirModalLogin()" class="text-xs bg-blue-900 hover:bg-blue-800 text-white font-bold px-4 py-2 rounded-lg transition">Iniciar sesión</button>`;
+    if(badge) badge.textContent = 'Modo consulta · invitado';
+  }
+  evaluarCamposFormulario();
+  renderRegistro();
+}
+
+function entrarComoInvitado(){ usuarioActual = null; actualizarInterfazAuth(); navegarA('inicio'); }
+
+function navegarA(tab){
+  ['inicio','mapa','registro','coordinacion'].forEach(id=>{
+    document.getElementById('sec-'+id).classList.add('hidden');
+  });
+  document.getElementById('sec-'+tab).classList.remove('hidden');
+  document.querySelectorAll('#nav-tabs button').forEach(b=>{
+    b.classList.toggle('tab-active', b.dataset.tab === tab);
+    b.classList.toggle('tab-inactive', b.dataset.tab !== tab);
+  });
+  if(tab === 'registro'){ renderRegistro(); setTimeout(()=>document.getElementById('scan-input').focus(), 50); }
+  if(tab === 'coordinacion'){ renderCoordinacion(); }
+  if(tab === 'mapa'){
+    inicializarMapaSiHaceFalta();
+    setTimeout(()=>{ if(mapaLeaflet) mapaLeaflet.invalidateSize(); }, 60);
+  }
+}
+
+function requiereSesion(tab, rolNecesario){
+  if(!usuarioActual){
+    mostrarToast('Debes iniciar sesión para acceder.');
+    abrirModalLogin();
+    return;
+  }
+  if(rolNecesario && usuarioActual.rol !== rolNecesario){
+    mostrarToast('Sección exclusiva del coordinador general.');
+    return;
+  }
+  navegarA(tab);
+}
+
+function procesarCodigo(){
+  const input = document.getElementById('scan-input');
+  const codigo = input.value.trim();
+  if(!codigo) return;
+  codigoEscaneado = codigo;
+  const producto = catalogo[codigo];
+  const resultado = document.getElementById('resultado-escaneo');
+
+  bloquearEdicionArticulo();
+
+  if(producto){
+    document.getElementById('input-articulo').value = producto.nombre;
+    document.getElementById('input-area').value = producto.area;
+    document.getElementById('btn-editar-articulo').classList.remove('hidden');
+    resultado.innerHTML = `<p class="text-emerald-700 font-semibold">✓ ${producto.nombre} (${producto.area})</p>`;
+  } else if(usuarioActual && usuarioActual.rol !== 'voluntario'){
+    resultado.innerHTML = `
+      <div class="space-y-2 border rounded-lg p-3 bg-amber-50 border-amber-200">
+        <p class="text-amber-800 font-semibold text-xs">Código no catalogado. Dar de alta:</p>
+        <input id="nuevo-nombre" type="text" placeholder="Nombre del artículo" class="w-full border p-2 rounded text-sm">
+        <select id="nuevo-area" class="w-full border p-2 rounded text-sm">${AREAS.map(a=>`<option>${a}</option>`).join('')}</select>
+        <button type="button" onclick="registrarNuevoCodigo('${codigo}')" class="w-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold py-2 rounded">Catalogar y Asignar</button>
+      </div>`;
+    document.getElementById('input-articulo').value = '';
+    document.getElementById('input-area').value = '';
+    document.getElementById('btn-editar-articulo').classList.add('hidden');
+  } else {
+    resultado.innerHTML = `<p class="text-red-600 font-semibold">Código no registrado. Requiere perfil Encargado.</p>`;
+    document.getElementById('btn-editar-articulo').classList.add('hidden');
+  }
+  input.value = '';
+  input.focus();
+}
+
+function habilitarEdicionArticulo(){
+  if(!codigoEscaneado) return;
+  const inputArt = document.getElementById('input-articulo');
+  const inputArea = document.getElementById('input-area');
+  const selectArea = document.getElementById('select-area-edicion');
+
+  inputArt.readOnly = false;
+  inputArt.classList.remove('bg-gray-100');
+  inputArt.classList.add('bg-amber-50', 'border-amber-400');
+  inputArt.focus();
+
+  selectArea.innerHTML = AREAS.map(a => `<option value="${a}" ${a === inputArea.value ? 'selected' : ''}>${a}</option>`).join('');
+  inputArea.classList.add('hidden');
+  selectArea.classList.remove('hidden');
+
+  mostrarToast('Ahora puedes editar el nombre y categoría.');
+}
+
+function bloquearEdicionArticulo(){
+  const inputArt = document.getElementById('input-articulo');
+  const inputArea = document.getElementById('input-area');
+  const selectArea = document.getElementById('select-area-edicion');
+
+  inputArt.readOnly = true;
+  inputArt.classList.add('bg-gray-100');
+  inputArt.classList.remove('bg-amber-50', 'border-amber-400');
+
+  inputArea.classList.remove('hidden');
+  selectArea.classList.add('hidden');
+}
+
+function registrarNuevoCodigo(codigo){
+  const nombre = document.getElementById('nuevo-nombre').value.trim();
+  const area = document.getElementById('nuevo-area').value;
+  if(!nombre){ mostrarToast('Escribe el nombre del producto.'); return; }
+  catalogo[codigo] = { nombre, area };
+  guardarCatalogo();
+  document.getElementById('input-articulo').value = nombre;
+  document.getElementById('input-area').value = area;
+  document.getElementById('btn-editar-articulo').classList.remove('hidden');
+  document.getElementById('resultado-escaneo').innerHTML = `<p class="text-emerald-700 font-semibold">✓ ${nombre} (${area})</p>`;
+  renderCatalogoTabla();
+  actualizarKpis();
+}
+
+function evaluarCamposFormulario(){
+  const tipo = document.getElementById('tipo-movimiento').value;
+  document.getElementById('div-motivo').classList.toggle('hidden', !(tipo==='merma' || tipo==='ajuste'));
+  document.getElementById('div-destino').classList.toggle('hidden', tipo!=='transferencia');
+  document.getElementById('div-signo').classList.toggle('hidden', tipo!=='ajuste');
+
+  if(usuarioActual){
+    const esVoluntario = usuarioActual.rol === 'voluntario';
+    document.querySelectorAll('#tipo-movimiento .solo-encargado').forEach(el=>{ el.disabled = esVoluntario; });
+    if(tipo === 'transferencia'){
+      const sel = document.getElementById('input-destino');
+      sel.innerHTML = CENTROS.filter(c=>c.id !== (usuarioActual.centroId || CENTROS[0]?.id))
+        .map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+    }
+  }
+}
+
+function guardarMovimiento(ev){
+  ev.preventDefault();
+  if(!usuarioActual){ mostrarToast('Inicia sesión primero.'); return; }
+  if(!codigoEscaneado || !catalogo[codigoEscaneado]){ mostrarToast('Escanea un producto válido.'); return; }
+
+  const inputArt = document.getElementById('input-articulo');
+  const selectArea = document.getElementById('select-area-edicion');
+  if(!inputArt.readOnly){
+    const nuevoNombre = inputArt.value.trim();
+    const nuevaArea = selectArea.value;
+    if(nuevoNombre){
+      catalogo[codigoEscaneado] = { nombre: nuevoNombre, area: nuevaArea };
+      guardarCatalogo();
+      document.getElementById('input-area').value = nuevaArea;
+    }
+  }
+
+  const tipo = document.getElementById('tipo-movimiento').value;
+  const cantidad = parseInt(document.getElementById('input-cantidad').value, 10);
+  if(!cantidad || cantidad <= 0){ mostrarToast('Ingresa una cantidad válida.'); return; }
+
+  if((tipo==='merma' || tipo==='transferencia' || tipo==='ajuste') && usuarioActual.rol === 'voluntario'){
+    mostrarToast('Operación no permitida para rol Voluntario.'); return;
+  }
+  
+  const motivo = document.getElementById('input-motivo').value.trim();
+  if((tipo==='merma' || tipo==='ajuste') && !motivo){ mostrarToast('Ingresa el motivo obligatorio.'); return; }
+
+  const centroOrigen = usuarioActual.centroId || CENTROS[0]?.id || 'campus';
+  const campana = document.getElementById('select-campana').value;
+
+  if(tipo === 'transferencia'){
+    const centroDestino = document.getElementById('input-destino').value;
+    movimientos.push({
+      id: Date.now()+'-1',
+      centro: centroOrigen,
+      campana,
+      tipo: 'transferencia-salida',
+      codigo: codigoEscaneado,
+      articulo: catalogo[codigoEscaneado].nombre,
+      area: catalogo[codigoEscaneado].area,
+      cantidad,
+      destino: centroDestino,
+      fecha: new Date().toISOString(),
+      usuario: usuarioActual.nombre
+    });
+    movimientos.push({
+      id: Date.now()+'-2',
+      centro: centroDestino,
+      campana,
+      tipo: 'transferencia-entrada',
+      codigo: codigoEscaneado,
+      articulo: catalogo[codigoEscaneado].nombre,
+      area: catalogo[codigoEscaneado].area,
+      cantidad,
+      origen: centroOrigen,
+      fecha: new Date().toISOString(),
+      usuario: usuarioActual.nombre
+    });
+  } else {
+    movimientos.push({
+      id: Date.now()+'-0',
+      centro: centroOrigen,
+      campana,
+      tipo,
+      codigo: codigoEscaneado,
+      articulo: catalogo[codigoEscaneado].nombre,
+      area: catalogo[codigoEscaneado].area,
+      cantidad,
+      motivo: motivo || null,
+      signo: tipo==='ajuste' ? parseInt(document.getElementById('input-signo').value,10) : null,
+      fecha: new Date().toISOString(),
+      usuario: usuarioActual.nombre
+    });
+  }
+
+  guardarMovimientos();
+  mostrarToast('Movimiento registrado con éxito.');
+
+  document.getElementById('form-movimiento').reset();
+  bloquearEdicionArticulo();
+  document.getElementById('btn-editar-articulo').classList.add('hidden');
+  document.getElementById('input-articulo').value = '';
+  document.getElementById('input-area').value = '';
+  document.getElementById('resultado-escaneo').innerHTML = '';
+  codigoEscaneado = null;
+  renderTodo();
+}
+
+function calcularStockPorCentro(centroId){
+  const stock = {};
+  movimientos.forEach(m => {
+    if(m.centro !== centroId) return;
+    const key = m.codigo + '||' + m.campana;
+    if(!stock[key]) stock[key] = { codigo: m.codigo, campana: m.campana, cantidad: 0 };
+    
+    if(m.tipo === 'recepcion' || m.tipo === 'transferencia-entrada') stock[key].cantidad += m.cantidad;
+    else if(m.tipo === 'entrega' || m.tipo === 'merma' || m.tipo === 'transferencia-salida') stock[key].cantidad -= m.cantidad;
+    else if(m.tipo === 'ajuste') stock[key].cantidad += (m.cantidad * (m.signo || 1));
+  });
+  return stock;
+}
+
+function renderRegistro(){
+  renderCampanasSelect();
+  const cId = usuarioActual ? (usuarioActual.centroId || CENTROS[0]?.id) : CENTROS[0]?.id;
+  const centroObj = CENTROS.find(c=>c.id === cId);
+  document.getElementById('titulo-centro-activo').textContent = centroObj ? centroObj.nombre : 'General';
+
+  const stockMap = calcularStockPorCentro(cId);
+  const tbody = document.getElementById('tabla-stock-centro');
+  tbody.innerHTML = '';
+
+  const lista = Object.values(stockMap).filter(item => item.cantidad !== 0);
+  if(lista.length === 0){
+    tbody.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-gray-400 italic">No hay existencias registradas</td></tr>`;
+  } else {
+    lista.forEach(item => {
+      const prod = catalogo[item.codigo] || { nombre: 'Desconocido', area: 'General' };
+      const camp = CAMPANAS.find(c => c.id === item.campana);
+      tbody.innerHTML += `
+        <tr class="border-b hover:bg-gray-50">
+          <td class="p-2 font-mono text-xs">${item.codigo}</td>
+          <td class="p-2 font-semibold">${prod.nombre}</td>
+          <td class="p-2 text-xs text-gray-600">${prod.area}</td>
+          <td class="p-2 text-xs font-medium text-blue-800">${camp ? camp.nombre : item.campana}</td>
+          <td class="p-2 font-bold ${item.cantidad < 0 ? 'text-red-600' : 'text-gray-900'}">${item.cantidad}</td>
+        </tr>`;
+    });
+  }
+  renderCatalogoTabla();
+}
+
+function renderCatalogoTabla(){
+  const tbody = document.getElementById('tabla-catalogo');
+  tbody.innerHTML = Object.entries(catalogo).map(([cod, item])=>`
+    <tr class="border-b text-xs">
+      <td class="p-2 font-mono">${cod}</td>
+      <td class="p-2 font-semibold">${item.nombre}</td>
+      <td class="p-2 text-gray-600">${item.area}</td>
+    </tr>`).join('');
+}
+
+function renderCoordinacion(){
+  const tbodyStock = document.getElementById('tabla-global-stock');
+  tbodyStock.innerHTML = '';
+
+  CENTROS.forEach(c => {
+    const stockMap = calcularStockPorCentro(c.id);
+    Object.values(stockMap).forEach(item => {
+      if(item.cantidad === 0) return;
+      const prod = catalogo[item.codigo] || { nombre: 'Desconocido', area: 'General' };
+      const camp = CAMPANAS.find(cp => cp.id === item.campana);
+      tbodyStock.innerHTML += `
+        <tr class="border-b text-xs">
+          <td class="p-2 font-bold text-gray-700">${c.nombre}</td>
+          <td class="p-2 font-mono">${item.codigo}</td>
+          <td class="p-2 font-semibold">${prod.nombre}</td>
+          <td class="p-2 text-gray-600">${prod.area}</td>
+          <td class="p-2 text-blue-900 font-medium">${camp ? camp.nombre : item.campana}</td>
+          <td class="p-2 font-bold ${item.cantidad < 0 ? 'text-red-600' : 'text-gray-800'}">${item.cantidad}</td>
+        </tr>`;
+    });
+  });
+
+  const tbodyMovs = document.getElementById('tabla-movimientos');
+  tbodyMovs.innerHTML = movimientos.slice().reverse().map(m => {
+    const cObj = CENTROS.find(c => c.id === m.centro);
+    const destObj = CENTROS.find(c => c.id === m.destino);
+    const origObj = CENTROS.find(c => c.id === m.origen);
+
+    let badgeTipo = `<span class="bg-gray-100 text-gray-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase">${m.tipo}</span>`;
+    let detalle = m.motivo || '—';
+
+    if(m.tipo === 'recepcion') badgeTipo = `<span class="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Recepción</span>`;
+    if(m.tipo === 'entrega') badgeTipo = `<span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Entrega</span>`;
+    if(m.tipo === 'merma') badgeTipo = `<span class="bg-red-100 text-red-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase">Merma</span>`;
+    
+    if(m.tipo === 'transferencia-salida') {
+      badgeTipo = `<span class="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase">✈️ Transferencia / Enviado</span>`;
+      detalle = `Destino: ${destObj ? destObj.nombre : m.destino}`;
+    }
+    if(m.tipo === 'transferencia-entrada') {
+      badgeTipo = `<span class="bg-teal-100 text-teal-800 text-[10px] px-2 py-0.5 rounded font-bold uppercase">📦 Transferencia / Recibido</span>`;
+      detalle = `Origen: ${origObj ? origObj.nombre : m.origen}`;
+    }
+
+    const selectCampanasOpt = CAMPANAS.map(c => 
+      `<option value="${c.id}" ${c.id === m.campana ? 'selected' : ''}>${c.nombre}</option>`
+    ).join('');
+
+    return `
+      <tr class="border-b text-xs hover:bg-gray-50">
+        <td class="p-2 text-gray-500">${new Date(m.fecha).toLocaleString('es-MX')}</td>
+        <td class="p-2 font-bold">${cObj ? cObj.nombre : m.centro}</td>
+        <td class="p-2">
+          <select onchange="cambiarCampanaMovimiento('${m.id}', this.value)" class="border rounded text-xs p-1 bg-white focus:ring">
+            ${selectCampanasOpt}
+          </select>
+        </td>
+        <td class="p-2">${badgeTipo}</td>
+        <td class="p-2 font-semibold">${m.articulo}</td>
+        <td class="p-2 font-bold">${m.cantidad}</td>
+        <td class="p-2 text-gray-600">${detalle}</td>
+        <td class="p-2 text-gray-500">${m.usuario}</td>
+      </tr>`;
+  }).join('');
+}
+
+function renderCentros(){
+  const cont = document.getElementById('lista-centros');
+  if(!cont) return;
+  cont.innerHTML = CENTROS.map(c => `
+    <div class="bg-white p-4 rounded-xl border flex justify-between items-center">
+      <div>
+        <h4 class="font-bold text-gray-900">${c.nombre}</h4>
+        <p class="text-xs text-gray-500">Coordenadas: ${c.lat}, ${c.lng}</p>
+      </div>
+      <span class="bg-emerald-50 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-full">Operativo</span>
+    </div>`).join('');
+}
+
+function inicializarMapaSiHaceFalta(){
+  if(mapaLeaflet) return;
+  const elMapa = document.getElementById('mapa');
+  if(!elMapa) return;
+  mapaLeaflet = L.map('mapa').setView([22.400, -97.890], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(mapaLeaflet);
+
+  CENTROS.forEach(c => {
+    L.marker([c.lat, c.lng]).addTo(mapaLeaflet).bindPopup(`<b>${c.nombre}</b><br>Estado: Operativo`);
+  });
+}
+
+function actualizarKpis(){
+  const totDonaciones = movimientos.filter(m=>m.tipo==='recepcion').reduce((acc,m)=>acc+m.cantidad, 0);
+  const totEntregas = movimientos.filter(m=>m.tipo==='entrega').reduce((acc,m)=>acc+m.cantidad, 0);
+
+  document.getElementById('kpi-donaciones').textContent = totDonaciones;
+  document.getElementById('kpi-entregas').textContent = totEntregas;
+  document.getElementById('kpi-centros').textContent = CENTROS.length;
+  document.getElementById('kpi-campana').textContent = CAMPANAS[CAMPANAS.length - 1]?.nombre || '—';
+}
+
+function exportarCSV(){
+  if(!movimientos.length){ mostrarToast('No hay datos para exportar.'); return; }
+  let csv = 'ID,Fecha,Centro,Campana,Tipo,Codigo,Articulo,Area,Cantidad,DetalleMotivo,Usuario\n';
+  movimientos.forEach(m => {
+    csv += `"${m.id}","${m.fecha}","${m.centro}","${m.campana}","${m.tipo}","${m.codigo}","${m.articulo}","${m.area}",${m.cantidad},"${m.motivo||m.destino||m.origen||''}","${m.usuario}"\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `reporte_stockred_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function renderTodo(){
+  actualizarKpis();
+  renderCentros();
+  renderRegistro();
+  renderCoordinacion();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  cargarDatos();
+  actualizarInterfazAuth();
+});
+
+document.getElementById('idDeSuFormulario').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const datosAEnviar = {
+        tipo_movimiento: 'entrada',
+        id_articulo: 1,
+        cantidad: 10
+    };
+
+    fetch('https://stockred.alwaysdata.net/registrar_movimiento.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datosAEnviar)
+    })
+    .then(response => response.json())
+    .then(resultado => {
+        alert('Registrado con éxito');
+        cargarInventario();
+    })
+    .catch(error => console.error('Error:', error));
+});
+
+</script>
+
+</body>
+</html>
