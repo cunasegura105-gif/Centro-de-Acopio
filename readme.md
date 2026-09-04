@@ -49,6 +49,8 @@ Para revisar el código fuente o ejecutar la aplicación localmente:
 2. Entra al directorio del proyecto y ejecuta el archivo StockRed/html/index.html en tu navegador web.
 
 ## Equipo de desarrollo
-**Roel Armando Martinez Rico**
-**Jorge Arturo Guzman Ponce**
+
+**Roel Armando Martinez Rico**  
+**Jorge Arturo Guzman Ponce**  
 **Ericka Denisse Najera Herrera**
+
