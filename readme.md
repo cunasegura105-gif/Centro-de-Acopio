@@ -50,7 +50,6 @@ Para revisar el código fuente o ejecutar la aplicación localmente:
 
 ## Equipo de desarrollo
 
-**Roel Armando Martinez Rico**  
-**Jorge Arturo Guzman Ponce**  
-**Ericka Denisse Najera Herrera**
-
+**Roel Armando Martinez Rico (Programador)**  
+**Jorge Arturo Guzman Ponce (Desarrollador de base de datos)**  
+**Ericka Denisse Najera Herrera (Diseñadora y encargada de documentacion)**
