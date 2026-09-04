@@ -13,11 +13,11 @@ Sitio publicado: [stockred-105.netlify.app](https://stockred-105.netlify.app)
 
 ## Tecnologías utilizadas
 
-* **Frontend:** HTML5, JavaScript (ES6+), Tailwind CSS
+* **Frontend:** HTML5, JavaScript, Tailwind CSS
 * **Mapas interactivos:** Leaflet.js
-* **Base de Datos (Esquema):** SQL
-* **Hosting / Despliegue:** Netlify
-* **Control de versiones:** Git & GitHub
+* **Base de Datos:** SQL
+* **Hosting:** Netlify
+* **Control de versiones:** GitHub
 
 ## Estructura del repositorio
 
